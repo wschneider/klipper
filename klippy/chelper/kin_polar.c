@@ -34,11 +34,18 @@ polar_stepper_angle_calc_position(struct stepper_kinematics *sk, struct move *m
         angle = sk->commanded_pos;
     } else {
         angle = atan2(c.y, c.x);
-        // Normalize angle to minimize rotation
-        if (angle - sk->commanded_pos > M_PI)
-            angle -= 2. * M_PI;
-        else if (angle - sk->commanded_pos < -M_PI)
-            angle += 2. * M_PI;
+        // Normalize angle to minimize rotation with better precision handling
+        double angle_diff = angle - sk->commanded_pos;
+        if (angle_diff > M_PI)
+            angle_diff -= 2. * M_PI;
+        else if (angle_diff < -M_PI)
+            angle_diff += 2. * M_PI;
+        
+        // If the angle difference is very small, just use the current position
+        if (fabs(angle_diff) < 1e-6)  // About 0.0001 degrees
+            angle = sk->commanded_pos;
+        else
+            angle = sk->commanded_pos + angle_diff;
     }
     return angle;
 }
