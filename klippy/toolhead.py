@@ -507,31 +507,29 @@ class ToolHead:
 
             logging.info(f"Move crosses origin")
 
-            # Split the move to avoid exact origin which causes stepcompress issues
-            # Use a tiny offset to avoid the mathematical singularity
-            epsilon = 0.001  # 0.001mm offset to avoid exact origin
+            # Your original approach: Move to origin, STOP, rotate, STOP, then move to target
             
-            # Move to near-origin in the start direction
-            start_angle = math.atan2(self.commanded_pos[1], self.commanded_pos[0])
-            near_origin_start = [epsilon * math.cos(start_angle), epsilon * math.sin(start_angle)]
+            # 1. Move to origin and FULLY STOP
+            move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
+            move_to_origin.limit_next_junction_speed(0.0)
+            self._process_move(move_to_origin)
             
-            move_to_near_origin = Move(self, self.commanded_pos, 
-                                     (near_origin_start[0], near_origin_start[1], newpos[2], newpos[3]), speed)
-            move_to_near_origin.limit_next_junction_speed(0.0)
-            self._process_move(move_to_near_origin)
+            # FULLY FLUSH the motion system - wait for complete stop
+            self.wait_moves()
             
-            # Move to near-origin in the end direction (this causes bed rotation)
-            end_angle = math.atan2(newpos[1], newpos[0])
-            near_origin_end = [epsilon * math.cos(end_angle), epsilon * math.sin(end_angle)]
+            logging.info("Move to origin - STOPPED")
             
-            rotation_move = Move(self, (near_origin_start[0], near_origin_start[1], newpos[2], newpos[3]),
-                               (near_origin_end[0], near_origin_end[1], newpos[2], newpos[3]), 1.0)
-            rotation_move.limit_next_junction_speed(0.0)
-            self._process_move(rotation_move)
+            # 2. Rotate bed and FULLY STOP
+            target_angle = math.atan2(newpos[1], newpos[0])
+            self.kin.rotate_bed(target_angle)
             
-            # Move to final destination
-            move_to_destination = Move(self, (near_origin_end[0], near_origin_end[1], newpos[2], newpos[3]),
-                                     newpos, speed)
+            # FULLY FLUSH again after rotation
+            self.wait_moves()
+            
+            logging.info("Rotate - STOPPED")
+            
+            # 3. Move to final destination
+            move_to_destination = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
             self._process_move(move_to_destination)
 
             logging.info("Move to destination")
