@@ -358,6 +358,8 @@ class ToolHead:
         next_move_time = self.print_time
         for move in moves:
             if move.special_polar_theta_adjust:
+                # Flush any remaining moves before rotation to avoid stepcompress conflicts
+                self._advance_flush_time(next_move_time)
                 target_angle = math.atan2(move.end_pos[1], move.end_pos[0])
                 self.kin.rotate_bed(target_angle)
                 next_move_time += move.min_move_t

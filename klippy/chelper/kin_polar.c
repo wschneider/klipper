@@ -24,12 +24,20 @@ polar_stepper_angle_calc_position(struct stepper_kinematics *sk, struct move *m
                                   , double move_time)
 {
     struct coord c = move_get_coord(m, move_time);
-    // XXX - handle x==y==0
-    double angle = atan2(c.y, c.x);
-    if (angle - sk->commanded_pos > M_PI)
-        angle -= 2. * M_PI;
-    else if (angle - sk->commanded_pos < -M_PI)
-        angle += 2. * M_PI;
+    double angle;
+    
+    // Handle the origin case where x==y==0
+    if (c.x == 0.0 && c.y == 0.0) {
+        // At origin, maintain current commanded position to avoid undefined atan2(0,0)
+        angle = sk->commanded_pos;
+    } else {
+        angle = atan2(c.y, c.x);
+        // Normalize angle to minimize rotation
+        if (angle - sk->commanded_pos > M_PI)
+            angle -= 2. * M_PI;
+        else if (angle - sk->commanded_pos < -M_PI)
+            angle += 2. * M_PI;
+    }
     return angle;
 }
 
