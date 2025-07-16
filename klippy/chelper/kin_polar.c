@@ -27,8 +27,22 @@ polar_stepper_angle_calc_position(struct stepper_kinematics *sk, struct move *m
     double angle;
     
     // Handle the origin case where x==y==0
-    if (c.x == 0.0 && c.y == 0.0) {
-        // At origin, maintain current commanded position to avoid undefined atan2(0,0)
+    if (fabs(c.x) < 1e-6 && fabs(c.y) < 1e-6) {
+        // At origin, smoothly transition to target angle if this is the start of a move
+        if (move_time <= 0.001) {
+            // Beginning of move - check if we need to rotate to a new angle
+            struct coord end_coord = move_get_coord(m, m->move_t);
+            if (fabs(end_coord.x) > 1e-6 || fabs(end_coord.y) > 1e-6) {
+                // Move goes somewhere - calculate target angle
+                angle = atan2(end_coord.y, end_coord.x);
+                if (angle - sk->commanded_pos > M_PI)
+                    angle -= 2. * M_PI;
+                else if (angle - sk->commanded_pos < -M_PI)
+                    angle += 2. * M_PI;
+                return angle;
+            }
+        }
+        // Stay at current angle when at origin
         angle = sk->commanded_pos;
     } else {
         angle = atan2(c.y, c.x);

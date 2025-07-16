@@ -507,38 +507,10 @@ class ToolHead:
 
             logging.info(f"Move crosses origin")
 
-            # Split the move into three parts:
-            move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
-            move_to_origin.limit_next_junction_speed(0.0)
-            self._process_move(move_to_origin, force_flush=True)
-
-            logging.info("Move to origin")
-
-            # Create a very small move at the origin that forces the bed to rotate
-            # Move from (0,0) to (epsilon, 0) to (0,0) which forces angle calculation
-            epsilon = 0.01  # 0.01mm 
-            target_angle = math.atan2(newpos[1], newpos[0])
-            
-            # Calculate a small offset that will result in the target angle
-            rotation_x = epsilon * math.cos(target_angle)
-            rotation_y = epsilon * math.sin(target_angle)
-            
-            # Micro-move to force rotation
-            rotation_move = Move(self, (0., 0., newpos[2], newpos[3]), 
-                               (rotation_x, rotation_y, newpos[2], newpos[3]), 1.0)
-            rotation_move.limit_next_junction_speed(0.0)
-            self._process_move(rotation_move, force_flush=True)
-            
-            # Return to origin
-            return_move = Move(self, (rotation_x, rotation_y, newpos[2], newpos[3]), 
-                             (0., 0., newpos[2], newpos[3]), 1.0)
-            return_move.limit_next_junction_speed(0.0)
-            self._process_move(return_move, force_flush=True)
-
-            logging.info("Rotate")
-
-            move_from_origin = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
-            self._process_move(move_from_origin, force_flush=True)
+            # Let the C code handle the cross-origin move naturally
+            # The updated kin_polar.c should handle rotation at the start of moves from origin
+            move = Move(self, self.commanded_pos, newpos, speed)
+            self._process_move(move)
 
             logging.info("Move to destination")
 
