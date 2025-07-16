@@ -358,11 +358,6 @@ class ToolHead:
         # Queue moves into trapezoid motion queue (trapq)
         next_move_time = self.print_time
         for move in moves:
-            if move.special_polar_theta_adjust:
-                # Skip the rotate_bed call - let normal trapq processing handle it
-                # The move from (0,0) to newpos will naturally rotate the bed
-                pass
-
             if move.is_kinematic_move:
                 self.trapq_append(
                     self.trapq, next_move_time,
@@ -517,13 +512,18 @@ class ToolHead:
             
             logging.info("Move to origin - STOPPED")
             
-            # 2. Create a special rotation move and FULLY STOP
-            # Create a special polar rotation move - use final destination for angle calculation
-            rotation_move = Move(self, (0., 0., newpos[2], newpos[3]), newpos, 
-                               1.0, special_polar_theta_adjust=True)
+            # 2. Pause motion system and rotate bed directly
+            # Flush everything and ensure complete stop
+            self.flush_step_generation()
             
-            self._process_move(rotation_move, force_flush=True)
-            self.wait_moves()
+            # Calculate target angle and rotate bed directly
+            target_angle = math.atan2(newpos[1], newpos[0])
+            
+            # Rotate bed bypassing motion system
+            self.kin.rotate_bed(target_angle)
+            
+            # Ensure rotation is complete before continuing
+            self.flush_step_generation()
             
             logging.info("Rotate - STOPPED")
             
