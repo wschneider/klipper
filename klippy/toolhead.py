@@ -4,6 +4,8 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging, importlib
+from importlib.metadata import pass_none
+
 import mcu, chelper, kinematics.extruder
 
 # Common suffixes: _d is distance (in mm), _v is velocity (in
@@ -12,7 +14,7 @@ import mcu, chelper, kinematics.extruder
 
 # Class to track each move request
 class Move:
-    def __init__(self, toolhead, start_pos, end_pos, speed):
+    def __init__(self, toolhead, start_pos, end_pos, speed, special_polar_theta_adjust=False):
         self.toolhead = toolhead
         self.start_pos = tuple(start_pos)
         self.end_pos = tuple(end_pos)
@@ -48,6 +50,12 @@ class Move:
         self.max_smoothed_v2 = 0.
         self.smooth_delta_v2 = 2.0 * move_d * toolhead.max_accel_to_decel
         self.next_junction_v2 = 999999999.9
+        self.special_polar_theta_adjust = special_polar_theta_adjust
+        if self.special_polar_theta_adjust:
+            self.is_kinematic_move = False
+            self.min_move_t = 0.1 # near-instant move around the origin
+            self.max_cruise_v2 = 0.0
+            self.start_v = self.end_v = self.cruise_v = 0.0
     def limit_speed(self, speed, accel):
         speed2 = speed**2
         if speed2 < self.max_cruise_v2:
@@ -267,16 +275,16 @@ class ToolHead:
         self.Coord = gcode.Coord
         extruder = kinematics.extruder.DummyExtruder(self.printer)
         self.extra_axes = [extruder]
-        kin_name = config.get('kinematics')
+        self.kin_name = config.get('kinematics')
         try:
-            mod = importlib.import_module('kinematics.' + kin_name)
+            mod = importlib.import_module('kinematics.' + self.kin_name)
             self.kin = mod.load_kinematics(self, config)
         except config.error as e:
             raise
         except self.printer.lookup_object('pins').error as e:
             raise
         except:
-            msg = "Error loading kinematics '%s'" % (kin_name,)
+            msg = "Error loading kinematics '%s'" % (self.kin_name,)
             logging.exception(msg)
             raise config.error(msg)
         # Register commands
@@ -347,7 +355,12 @@ class ToolHead:
         # Queue moves into trapezoid motion queue (trapq)
         next_move_time = self.print_time
         for move in moves:
-            if move.is_kinematic_move:
+            if move.special_polar_theta_adjust:
+                target_angle = math.atan2(move.end_pos[1], move.end_pos[0])
+                self.kin.rotate_bed(target_angle)
+                next_move_time += move.min_move_t
+
+            elif move.is_kinematic_move:
                 self.trapq_append(
                     self.trapq, next_move_time,
                     move.accel_t, move.cruise_t, move.decel_t,
@@ -471,7 +484,37 @@ class ToolHead:
         if last_move is not None:
             last_move.limit_next_junction_speed(speed)
     def move(self, newpos, speed):
-        move = Move(self, self.commanded_pos, newpos, speed)
+
+        if self.kin_name == 'polar':
+            '''
+            Polar moves require special logic when they pass around the origin. 
+            If a move crosses the origin, it should be split into three moves:
+            1. A move to the origin, with appropriate trapezoid, and velocity zero when it arrives.
+            2. A special rotation move around the origin to realign the toolhead to the new angle
+            3. A move to the destination position. 
+            '''
+            if not do_positions_cross_origin(self.commanded_pos, newpos):
+                move = Move(self, self.commanded_pos, newpos, speed)
+                self._process_move(move)
+                return
+
+            # Split the move into three parts:
+            move_to_origin = Move(self, self.commanded_pos, (0., 0., 0., newpos[3]), speed)
+            move_to_origin.limit_next_junction_speed(0.0)
+            self._process_move(move_to_origin)
+
+            rotation_move = Move(self, (0., 0., 0., newpos[3]), newpos, speed, special_polar_theta_adjust=True)
+            rotation_move.limit_next_junction_speed(0.0)
+            self.lookahead.add_move(rotation_move)
+
+            move_from_origin = Move(self, (0., 0., 0., newpos[3]), newpos, speed)
+            self._process_move(move_from_origin)
+            pass
+        else:
+            move = Move(self, self.commanded_pos, newpos, speed)
+            self._process_move(move)
+
+    def _process_move(self, move):
         if not move.move_d:
             return
         if move.is_kinematic_move:
@@ -485,6 +528,7 @@ class ToolHead:
             self._process_lookahead(lazy=True)
         if self.print_time > self.need_check_pause:
             self._check_pause()
+
     def manual_move(self, coord, speed):
         curpos = list(self.commanded_pos)
         for i in range(len(coord)):
@@ -731,3 +775,36 @@ class ToolHead:
 def add_printer_objects(config):
     config.get_printer().add_object('toolhead', ToolHead(config))
     kinematics.extruder.add_printer_objects(config)
+
+def do_positions_cross_origin(start_pos, end_pos):
+    EPSILON = 0.1  # 0.1mm tolerance around origin
+
+    # If the start position is near the origin, then yes:
+    if (abs(start_pos[0]) <= EPSILON and abs(start_pos[1]) <= EPSILON):
+        return True
+
+    # If both start and end positions are positive or both negative, then no:
+    if (start_pos[0] * end_pos[0] > 0.0 or start_pos[1] * end_pos[1] > 0.0):
+        return False
+
+    # We know the start and end positions are on opposite sides of the origin; it may not pass
+    #   through it though. Y = MX + B; we can use the slope of the line between the two points
+    #   to determine if the line crosses the origin.
+    delta_y = end_pos[1] - start_pos[1]
+    delta_x = end_pos[0] - start_pos[0]
+
+    if abs(delta_x) <= EPSILON and abs(start_pos[0]) <= EPSILON:
+        # Vertical line through origin
+        return True
+    elif abs(delta_x) <= EPSILON:
+        # Vertical line not through origin
+        return False
+
+    slope = delta_y / delta_x
+    y_intercept = start_pos[1] - slope * start_pos[0]
+    # Check if the line crosses within epsilon of the origin
+    if abs(y_intercept) <= EPSILON:
+        # Line crosses origin (within tolerance)
+        return True
+
+    return False

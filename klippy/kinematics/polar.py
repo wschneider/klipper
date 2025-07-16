@@ -6,6 +6,12 @@
 import logging, math
 import stepper
 
+
+# Fixing polar kinematics:
+# 1. All moves that cross the origin x=0, y=0 should be split into two moves
+# 2. Moves with a start position at the origin should then have a rotation step
+#       before move
+
 class PolarKinematics:
     def __init__(self, toolhead, config):
         # Setup axis steppers
@@ -102,6 +108,15 @@ class PolarKinematics:
             z_ratio = move.move_d / abs(move.axes_d[2])
             move.limit_speed(self.max_z_velocity * z_ratio,
                              self.max_z_accel * z_ratio)
+
+    def rotate_bed(self, angle):
+        stepper_bed = self.steppers[0]
+        if not stepper_bed.is_homed():
+            raise stepper_bed.move_error("Bed must be homed before rotation")
+
+        stepper_bed.set_position([angle, 0, 0])
+
+
     def get_status(self, eventtime):
         xy_home = "xy" if self.limit_xy2 >= 0. else ""
         z_home = "z" if self.limit_z[0] <= self.limit_z[1] else ""
