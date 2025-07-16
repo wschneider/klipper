@@ -28,7 +28,7 @@ polar_stepper_angle_calc_position(struct stepper_kinematics *sk, struct move *m
     
     // Handle the origin case where x and y are very close to zero
     // Use epsilon tolerance to handle floating-point precision errors
-    double epsilon = 1e-9;  // 1 nanometer tolerance
+    double epsilon = 1e-6;  // 1 micrometer tolerance (matches itersolve precision)
     if (fabs(c.x) < epsilon && fabs(c.y) < epsilon) {
         // At origin (within tolerance), maintain current angle to avoid undefined atan2(0,0)
         angle = sk->commanded_pos;
