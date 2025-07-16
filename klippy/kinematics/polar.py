@@ -146,6 +146,10 @@ class PolarKinematics:
             
             # Wait for all moves to complete to ensure clean state
             toolhead.wait_moves()
+            
+            # Debug: Check the actual stepper position after force_move
+            actual_angle = stepper_bed.get_commanded_position()
+            logging.info(f"After force_move: target_angle={angle}, actual_angle={actual_angle}, diff={angle-actual_angle}")
 
 
     def get_status(self, eventtime):
