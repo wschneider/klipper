@@ -503,20 +503,24 @@ class ToolHead:
             logging.info(f"Move crosses origin")
 
             # Split the move into three parts:
-            move_to_origin = Move(self, self.commanded_pos, (0., 0., 0., newpos[3]), speed)
+            move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
             move_to_origin.limit_next_junction_speed(0.0)
             self._process_move(move_to_origin, force_flush=True)
 
             logging.info("Move to origin")
 
-            rotation_move = Move(self, (0., 0., 0., newpos[3]), newpos, speed, special_polar_theta_adjust=True)
-            rotation_move.limit_next_junction_speed(0.0)
+            rotation_move = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed, special_polar_theta_adjust=True)
+            # rotation_move.limit_next_junction_speed(0.0)
+            # Don't limit junction speed on rotation move - let it transition smoothly to next move
             self.lookahead.add_move(rotation_move)
             self._process_lookahead(lazy=True)
 
             logging.info("Rotate")
 
-            move_from_origin = Move(self, (0., 0., 0., newpos[3]), newpos, speed)
+            # Add small dwell to break zero-velocity chain
+            self.dwell(0.001)
+
+            move_from_origin = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
             self._process_move(move_from_origin, force_flush=True)
 
             logging.info("Move to destination")
