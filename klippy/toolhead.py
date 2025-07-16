@@ -358,12 +358,10 @@ class ToolHead:
         next_move_time = self.print_time
         for move in moves:
             if move.special_polar_theta_adjust:
-                pass
-                # Flush any remaining moves before rotation to avoid stepcompress conflicts
-                # self._advance_flush_time(next_move_time)
-                # target_angle = math.atan2(move.end_pos[1], move.end_pos[0])
-                # self.kin.rotate_bed(target_angle)
-                # next_move_time += move.min_move_t
+                # Handle bed rotation move - calculate target angle from end position
+                target_angle = math.atan2(move.end_pos[1], move.end_pos[0])
+                self.kin.rotate_bed(target_angle)
+                next_move_time += move.min_move_t
 
             elif move.is_kinematic_move:
                 self.trapq_append(
@@ -519,11 +517,12 @@ class ToolHead:
             
             logging.info("Move to origin - STOPPED")
             
-            # 2. Rotate bed and FULLY STOP
-            target_angle = math.atan2(newpos[1], newpos[0])
-            self.kin.rotate_bed(target_angle)
+            # 2. Create a special rotation move and FULLY STOP
+            # Create a special polar rotation move - use final destination for angle calculation
+            rotation_move = Move(self, (0., 0., newpos[2], newpos[3]), newpos, 
+                               1.0, special_polar_theta_adjust=True)
             
-            # FULLY FLUSH again after rotation
+            self._process_move(rotation_move)
             self.wait_moves()
             
             logging.info("Rotate - STOPPED")
