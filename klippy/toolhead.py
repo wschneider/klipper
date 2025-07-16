@@ -510,19 +510,30 @@ class ToolHead:
             # Split the move into three parts:
             move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
             move_to_origin.limit_next_junction_speed(0.0)
-            
-            # Add callback to rotate bed when move-to-origin completes
-            target_angle = math.atan2(newpos[1], newpos[0])
-            def rotate_bed_callback(print_time):
-                self.kin.rotate_bed(target_angle)
-            move_to_origin.timing_callbacks.append(rotate_bed_callback)
-            
             self._process_move(move_to_origin, force_flush=True)
 
             logging.info("Move to origin")
 
-            # Update commanded position for the rotation
-            self.commanded_pos[:] = [0., 0., newpos[2], newpos[3]]
+            # Create a very small move at the origin that forces the bed to rotate
+            # Move from (0,0) to (epsilon, 0) to (0,0) which forces angle calculation
+            epsilon = 0.01  # 0.01mm 
+            target_angle = math.atan2(newpos[1], newpos[0])
+            
+            # Calculate a small offset that will result in the target angle
+            rotation_x = epsilon * math.cos(target_angle)
+            rotation_y = epsilon * math.sin(target_angle)
+            
+            # Micro-move to force rotation
+            rotation_move = Move(self, (0., 0., newpos[2], newpos[3]), 
+                               (rotation_x, rotation_y, newpos[2], newpos[3]), 1.0)
+            rotation_move.limit_next_junction_speed(0.0)
+            self._process_move(rotation_move, force_flush=True)
+            
+            # Return to origin
+            return_move = Move(self, (rotation_x, rotation_y, newpos[2], newpos[3]), 
+                             (0., 0., newpos[2], newpos[3]), 1.0)
+            return_move.limit_next_junction_speed(0.0)
+            self._process_move(return_move, force_flush=True)
 
             logging.info("Rotate")
 
