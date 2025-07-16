@@ -528,7 +528,9 @@ class ToolHead:
             # Update the entire kinematics system to reflect the new stepper positions
             self.set_position([0., 0., newpos[2], newpos[3]], "")
             # self.kin.set_position([0., 0., newpos[2], newpos[3]], "")
-            
+
+            actual_angle = self.kin.get_steppers()[0].get_commanded_position()
+            logging.info(f"After force_move: target_angle={target_angle}, actual_angle={actual_angle}, diff={angle-actual_angle}")
             logging.info("Rotate - STOPPED")
             
             # 3. Move to final destination
