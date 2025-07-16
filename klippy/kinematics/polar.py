@@ -129,8 +129,18 @@ class PolarKinematics:
             force_move = self.printer.lookup_object('force_move')
             force_move.manual_move(stepper_bed, angle_diff, 1.0, 1.0)  # 1 rad/s, 1 rad/s^2
             
-            # Ensure the stepper position is properly synced after force_move
+            # After force_move, reset the stepper to a clean state
+            # Get the toolhead to ensure proper synchronization
+            toolhead = self.printer.lookup_object('toolhead')
+            
+            # Reset the stepper's trapq to the main one
+            stepper_bed.set_trapq(toolhead.get_trapq())
+            
+            # Reset the stepper's position to match the actual angle
             stepper_bed.set_position([angle, 0, 0])
+            
+            # Ensure all motion queues are synchronized
+            toolhead.flush_step_generation()
 
 
     def get_status(self, eventtime):
