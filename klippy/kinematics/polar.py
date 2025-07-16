@@ -127,7 +127,7 @@ class PolarKinematics:
         # Use force_move to actually move the stepper
         if abs(angle_diff) > 1e-6:  # Only move if there's a significant difference
             force_move = self.printer.lookup_object('force_move')
-            force_move.manual_move(stepper_bed, angle_diff, 1.0, 1.0)  # 1 rad/s, 1 rad/s^2
+            force_move.manual_move(stepper_bed, angle_diff, 2.0, 3.0)  # 1 rad/s, 1 rad/s^2
             
             # After force_move, completely reset the stepper state
             toolhead = self.printer.lookup_object('toolhead')
@@ -138,14 +138,15 @@ class PolarKinematics:
             # Reset the stepper's trapq to the main one
             stepper_bed.set_trapq(toolhead.get_trapq())
             
-            # Clear any residual step commands by resetting the stepper
+            # Wait for all moves to complete to ensure clean state
+            toolhead.wait_moves()
+            
+            # CRITICAL: Update the stepper's commanded position to match the actual position
+            # force_move doesn't update this properly
             stepper_bed.set_position([angle, 0, 0])
             
             # Force another complete flush to ensure clean state
             toolhead.flush_step_generation()
-            
-            # Wait for all moves to complete to ensure clean state
-            toolhead.wait_moves()
             
             # Debug: Check the actual stepper position after force_move
             actual_angle = stepper_bed.get_commanded_position()
