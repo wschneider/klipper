@@ -493,28 +493,39 @@ class ToolHead:
             2. A special rotation move around the origin to realign the toolhead to the new angle
             3. A move to the destination position. 
             '''
+            logging.info(f"Polar Kinematic Move received {self.commanded_pos} to {newpos}")
+
             if not do_positions_cross_origin(self.commanded_pos, newpos):
                 move = Move(self, self.commanded_pos, newpos, speed)
                 self._process_move(move)
                 return
 
+            logging.info(f"Move crosses origin")
+
             # Split the move into three parts:
             move_to_origin = Move(self, self.commanded_pos, (0., 0., 0., newpos[3]), speed)
             move_to_origin.limit_next_junction_speed(0.0)
-            self._process_move(move_to_origin)
+            self._process_move(move_to_origin, force_flush=True)
+
+            logging.info("Move to origin")
 
             rotation_move = Move(self, (0., 0., 0., newpos[3]), newpos, speed, special_polar_theta_adjust=True)
             rotation_move.limit_next_junction_speed(0.0)
             self.lookahead.add_move(rotation_move)
+            self._process_lookahead(lazy=True)
+
+            logging.info("Rotate")
 
             move_from_origin = Move(self, (0., 0., 0., newpos[3]), newpos, speed)
-            self._process_move(move_from_origin)
-            pass
+            self._process_move(move_from_origin, force_flush=True)
+
+            logging.info("Move to destination")
+
         else:
             move = Move(self, self.commanded_pos, newpos, speed)
             self._process_move(move)
 
-    def _process_move(self, move):
+    def _process_move(self, move, force_flush=False):
         if not move.move_d:
             return
         if move.is_kinematic_move:
@@ -524,7 +535,7 @@ class ToolHead:
                 ea.check_move(move, e_index + 3)
         self.commanded_pos[:] = move.end_pos
         want_flush = self.lookahead.add_move(move)
-        if want_flush:
+        if want_flush or force_flush:
             self._process_lookahead(lazy=True)
         if self.print_time > self.need_check_pause:
             self._check_pause()
