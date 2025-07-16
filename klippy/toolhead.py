@@ -54,8 +54,10 @@ class Move:
         if self.special_polar_theta_adjust:
             self.is_kinematic_move = False
             self.min_move_t = 0.1 # near-instant move around the origin
-            self.max_cruise_v2 = 0.0
-            self.start_v = self.end_v = self.cruise_v = 0.0
+            # Use small non-zero velocity to avoid division by zero
+            min_velocity = 0.1  # 0.1 mm/s
+            self.max_cruise_v2 = min_velocity**2
+            self.start_v = self.end_v = self.cruise_v = min_velocity
     def limit_speed(self, speed, accel):
         speed2 = speed**2
         if speed2 < self.max_cruise_v2:
@@ -516,9 +518,6 @@ class ToolHead:
             self._process_lookahead(lazy=True)
 
             logging.info("Rotate")
-
-            # Add small dwell to break zero-velocity chain
-            self.dwell(0.001)
 
             move_from_origin = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
             self._process_move(move_from_origin, force_flush=True)
