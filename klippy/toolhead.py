@@ -507,10 +507,32 @@ class ToolHead:
 
             logging.info(f"Move crosses origin")
 
-            # Let the C code handle the cross-origin move naturally
-            # The updated kin_polar.c should handle rotation at the start of moves from origin
-            move = Move(self, self.commanded_pos, newpos, speed)
-            self._process_move(move)
+            # Split the move to avoid exact origin which causes stepcompress issues
+            # Use a tiny offset to avoid the mathematical singularity
+            epsilon = 0.001  # 0.001mm offset to avoid exact origin
+            
+            # Move to near-origin in the start direction
+            start_angle = math.atan2(self.commanded_pos[1], self.commanded_pos[0])
+            near_origin_start = [epsilon * math.cos(start_angle), epsilon * math.sin(start_angle)]
+            
+            move_to_near_origin = Move(self, self.commanded_pos, 
+                                     (near_origin_start[0], near_origin_start[1], newpos[2], newpos[3]), speed)
+            move_to_near_origin.limit_next_junction_speed(0.0)
+            self._process_move(move_to_near_origin)
+            
+            # Move to near-origin in the end direction (this causes bed rotation)
+            end_angle = math.atan2(newpos[1], newpos[0])
+            near_origin_end = [epsilon * math.cos(end_angle), epsilon * math.sin(end_angle)]
+            
+            rotation_move = Move(self, (near_origin_start[0], near_origin_start[1], newpos[2], newpos[3]),
+                               (near_origin_end[0], near_origin_end[1], newpos[2], newpos[3]), 1.0)
+            rotation_move.limit_next_junction_speed(0.0)
+            self._process_move(rotation_move)
+            
+            # Move to final destination
+            move_to_destination = Move(self, (near_origin_end[0], near_origin_end[1], newpos[2], newpos[3]),
+                                     newpos, speed)
+            self._process_move(move_to_destination)
 
             logging.info("Move to destination")
 
