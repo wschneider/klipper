@@ -359,12 +359,11 @@ class ToolHead:
         next_move_time = self.print_time
         for move in moves:
             if move.special_polar_theta_adjust:
-                # Handle bed rotation move - calculate target angle from end position
-                target_angle = math.atan2(move.end_pos[1], move.end_pos[0])
-                self.kin.rotate_bed(target_angle)
-                next_move_time += move.min_move_t
+                # Skip the rotate_bed call - let normal trapq processing handle it
+                # The move from (0,0) to newpos will naturally rotate the bed
+                pass
 
-            elif move.is_kinematic_move:
+            if move.is_kinematic_move:
                 self.trapq_append(
                     self.trapq, next_move_time,
                     move.accel_t, move.cruise_t, move.decel_t,
