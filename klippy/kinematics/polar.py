@@ -127,7 +127,7 @@ class PolarKinematics:
         # Use force_move to actually move the stepper
         if abs(angle_diff) > 1e-6:  # Only move if there's a significant difference
             force_move = self.printer.lookup_object('force_move')
-            force_move.manual_move(stepper_bed, angle_diff, 2.0, 3.0)  # 1 rad/s, 1 rad/s^2
+            force_move.manual_move(stepper_bed, angle_diff, 6.0, 3.0)  # 1 rad/s, 1 rad/s^2
             
             # After force_move, completely reset the stepper state
             toolhead = self.printer.lookup_object('toolhead')
