@@ -128,6 +128,9 @@ class PolarKinematics:
         if abs(angle_diff) > 1e-6:  # Only move if there's a significant difference
             force_move = self.printer.lookup_object('force_move')
             force_move.manual_move(stepper_bed, angle_diff, 1.0, 1.0)  # 1 rad/s, 1 rad/s^2
+            
+            # Ensure the stepper position is properly synced after force_move
+            stepper_bed.set_position([angle, 0, 0])
 
 
     def get_status(self, eventtime):
