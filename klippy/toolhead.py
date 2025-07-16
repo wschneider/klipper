@@ -52,9 +52,10 @@ class Move:
         self.next_junction_v2 = 999999999.9
         self.special_polar_theta_adjust = special_polar_theta_adjust
         if self.special_polar_theta_adjust:
-            self.is_kinematic_move = False
-            self.min_move_t = 0.1 # near-instant move around the origin
-            # Use small non-zero velocity to avoid division by zero
+            # Keep it kinematic but make it a zero-distance move that only rotates the bed
+            # This allows it to go through normal trapq processing
+            self.is_kinematic_move = True
+            self.min_move_t = 0.1 # time for rotation
             min_velocity = 0.1  # 0.1 mm/s
             self.max_cruise_v2 = min_velocity**2
             self.start_v = self.end_v = self.cruise_v = min_velocity
