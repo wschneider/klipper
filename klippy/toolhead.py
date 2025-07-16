@@ -531,7 +531,10 @@ class ToolHead:
             logging.info("Rotate - STOPPED")
             
             # 3. Move to final destination
+            logging.info(f"Final move: commanded_pos={self.commanded_pos}, target={newpos}")
             move_to_destination = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
+            logging.info(f"Final move created: start_pos={move_to_destination.start_pos}, end_pos={move_to_destination.end_pos}")
+            logging.info(f"Final move: axes_d={move_to_destination.axes_d}, move_d={move_to_destination.move_d}")
             self._process_move(move_to_destination, force_flush=True)
             self.flush_step_generation()
 
