@@ -358,11 +358,12 @@ class ToolHead:
         next_move_time = self.print_time
         for move in moves:
             if move.special_polar_theta_adjust:
+                pass
                 # Flush any remaining moves before rotation to avoid stepcompress conflicts
-                self._advance_flush_time(next_move_time)
-                target_angle = math.atan2(move.end_pos[1], move.end_pos[0])
-                self.kin.rotate_bed(target_angle)
-                next_move_time += move.min_move_t
+                # self._advance_flush_time(next_move_time)
+                # target_angle = math.atan2(move.end_pos[1], move.end_pos[0])
+                # self.kin.rotate_bed(target_angle)
+                # next_move_time += move.min_move_t
 
             elif move.is_kinematic_move:
                 self.trapq_append(
@@ -509,15 +510,19 @@ class ToolHead:
             # Split the move into three parts:
             move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
             move_to_origin.limit_next_junction_speed(0.0)
+            
+            # Add callback to rotate bed when move-to-origin completes
+            target_angle = math.atan2(newpos[1], newpos[0])
+            def rotate_bed_callback(print_time):
+                self.kin.rotate_bed(target_angle)
+            move_to_origin.timing_callbacks.append(rotate_bed_callback)
+            
             self._process_move(move_to_origin, force_flush=True)
 
             logging.info("Move to origin")
 
-            rotation_move = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed, special_polar_theta_adjust=True)
-            # rotation_move.limit_next_junction_speed(0.0)
-            # Don't limit junction speed on rotation move - let it transition smoothly to next move
-            self.lookahead.add_move(rotation_move)
-            self._process_lookahead(lazy=True)
+            # Update commanded position for the rotation
+            self.commanded_pos[:] = [0., 0., newpos[2], newpos[3]]
 
             logging.info("Rotate")
 
