@@ -14,6 +14,7 @@ import stepper
 
 class PolarKinematics:
     def __init__(self, toolhead, config):
+        self.printer = config.get_printer()
         # Setup axis steppers
         stepper_bed = stepper.PrinterStepper(config.getsection('stepper_bed'),
                                              units_in_radians=True)
@@ -110,9 +111,23 @@ class PolarKinematics:
                              self.max_z_accel * z_ratio)
 
     def rotate_bed(self, angle):
-        # Not really all that risky if axis isn't homed, since it's a circle
+        # Use force_move to actually command the bed stepper to the new angle
         stepper_bed = self.steppers[0]
-        stepper_bed.set_position([angle, 0, 0])
+        
+        # Calculate the angle difference (shortest path)
+        current_angle = stepper_bed.get_commanded_position()
+        angle_diff = angle - current_angle
+        
+        # Normalize to shortest rotation
+        if angle_diff > 3.14159:
+            angle_diff -= 2 * 3.14159
+        elif angle_diff < -3.14159:
+            angle_diff += 2 * 3.14159
+        
+        # Use force_move to actually move the stepper
+        if abs(angle_diff) > 1e-6:  # Only move if there's a significant difference
+            force_move = self.printer.lookup_object('force_move')
+            force_move.manual_move(stepper_bed, angle_diff, 1.0, 1.0)  # 1 rad/s, 1 rad/s^2
 
 
     def get_status(self, eventtime):
