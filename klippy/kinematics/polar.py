@@ -148,8 +148,14 @@ class PolarKinematics:
             # This is needed because when set_position is called with (0,0), 
             # the polar angle calc function returns the current angle to avoid atan2(0,0)
             # creating a circular dependency where the angle never gets updated
+            import chelper
+            ffi_main, ffi_lib = chelper.get_ffi()
             sk = stepper_bed.get_stepper_kinematics()
-            sk.commanded_pos = angle
+            # Use a temporary move structure to set the commanded position
+            # We'll create a fake coordinate that would result in the target angle
+            target_x = math.cos(angle) * 1.0  # Use radius of 1.0 
+            target_y = math.sin(angle) * 1.0
+            ffi_lib.itersolve_set_position(sk, target_x, target_y, 0.0)
             
             # Debug: Check the actual stepper position after manual update
             actual_angle = stepper_bed.get_commanded_position()
