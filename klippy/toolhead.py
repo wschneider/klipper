@@ -510,7 +510,7 @@ class ToolHead:
             # 1. Move to origin and FULLY STOP
             move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
             move_to_origin.limit_next_junction_speed(0.0)
-            self._process_move(move_to_origin)
+            self._process_move(move_to_origin, force_flush=True)
             
             # FULLY FLUSH the motion system - wait for complete stop
             self.wait_moves()
@@ -522,14 +522,14 @@ class ToolHead:
             rotation_move = Move(self, (0., 0., newpos[2], newpos[3]), newpos, 
                                1.0, special_polar_theta_adjust=True)
             
-            self._process_move(rotation_move)
+            self._process_move(rotation_move, force_flush=True)
             self.wait_moves()
             
             logging.info("Rotate - STOPPED")
             
             # 3. Move to final destination
             move_to_destination = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
-            self._process_move(move_to_destination)
+            self._process_move(move_to_destination, force_flush=True)
 
             logging.info("Move to destination")
 
