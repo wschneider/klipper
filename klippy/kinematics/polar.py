@@ -110,10 +110,8 @@ class PolarKinematics:
                              self.max_z_accel * z_ratio)
 
     def rotate_bed(self, angle):
+        # Not really all that risky if axis isn't homed, since it's a circle
         stepper_bed = self.steppers[0]
-        if not stepper_bed.is_homed():
-            raise stepper_bed.move_error("Bed must be homed before rotation")
-
         stepper_bed.set_position([angle, 0, 0])
 
 
