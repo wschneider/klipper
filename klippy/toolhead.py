@@ -526,7 +526,8 @@ class ToolHead:
             self.flush_step_generation()
             
             # Update the entire kinematics system to reflect the new stepper positions
-            self.kin.set_position([0., 0., newpos[2], newpos[3]], "")
+            self.set_position([0., 0., newpos[2], newpos[3]], "")
+            # self.kin.set_position([0., 0., newpos[2], newpos[3]], "")
             
             logging.info("Rotate - STOPPED")
             

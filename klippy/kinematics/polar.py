@@ -140,11 +140,7 @@ class PolarKinematics:
             
             # Wait for all moves to complete to ensure clean state
             toolhead.wait_moves()
-            
-            # CRITICAL: Update the stepper's commanded position to match the actual position
-            # force_move doesn't update this properly
-            stepper_bed.set_position([angle, 0, 0])
-            
+
             # Force another complete flush to ensure clean state
             toolhead.flush_step_generation()
             
