@@ -525,11 +525,15 @@ class ToolHead:
             # Ensure rotation is complete before continuing
             self.flush_step_generation()
             
+            # Update the entire kinematics system to reflect the new stepper positions
+            self.kin.set_position([0., 0., newpos[2], newpos[3]], "")
+            
             logging.info("Rotate - STOPPED")
             
             # 3. Move to final destination
             move_to_destination = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
             self._process_move(move_to_destination, force_flush=True)
+            self.flush_step_generation()
 
             logging.info("Move to destination")
 
