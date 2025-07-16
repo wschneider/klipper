@@ -144,9 +144,16 @@ class PolarKinematics:
             # Force another complete flush to ensure clean state
             toolhead.flush_step_generation()
             
-            # Debug: Check the actual stepper position after force_move
+            # Manually update the stepper's commanded position to the target angle
+            # This is needed because when set_position is called with (0,0), 
+            # the polar angle calc function returns the current angle to avoid atan2(0,0)
+            # creating a circular dependency where the angle never gets updated
+            sk = stepper_bed.get_stepper_kinematics()
+            sk.commanded_pos = angle
+            
+            # Debug: Check the actual stepper position after manual update
             actual_angle = stepper_bed.get_commanded_position()
-            logging.info(f"After force_move: target_angle={angle}, actual_angle={actual_angle}, diff={angle-actual_angle}")
+            logging.info(f"After manual commanded_pos update: target_angle={angle}, actual_angle={actual_angle}, diff={angle-actual_angle}")
 
 
     def get_status(self, eventtime):
