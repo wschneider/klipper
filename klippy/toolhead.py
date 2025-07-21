@@ -486,40 +486,22 @@ class ToolHead:
             move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
             move_to_origin.limit_next_junction_speed(0.0)
             self._process_move(move_to_origin, force_flush=True)
-            
-            # FULLY FLUSH the motion system - wait for complete stop
-            self.wait_moves()
-            
-            logging.info("Move to origin - STOPPED")
-            
-            # 2. Pause motion system and rotate bed directly
-            # Flush everything and ensure complete stop
-            self.flush_step_generation()
-            
+
             # Calculate target angle and rotate bed directly
             target_angle = math.atan2(newpos[1], newpos[0])
             
             # Rotate bed bypassing motion system
             self.kin.rotate_bed(target_angle)
             
-            # Ensure rotation is complete before continuing
-            self.flush_step_generation()
-            
             # Update the entire kinematics system to reflect the new stepper positions
             self.set_position([0., 0., newpos[2], newpos[3]], "")
-            # self.kin.set_position([0., 0., newpos[2], newpos[3]], "")
 
             actual_angle = self.kin.get_steppers()[0].get_commanded_position()
             logging.info(f"After Set Position: target_angle={target_angle}, actual_angle={actual_angle}, diff={target_angle-actual_angle}")
-            logging.info("Rotate - STOPPED")
-            
+
             # 3. Move to final destination
-            logging.info(f"Final move: commanded_pos={self.commanded_pos}, target={newpos}")
             move_to_destination = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
-            logging.info(f"Final move created: start_pos={move_to_destination.start_pos}, end_pos={move_to_destination.end_pos}")
-            logging.info(f"Final move: axes_d={move_to_destination.axes_d}, move_d={move_to_destination.move_d}")
             self._process_move(move_to_destination, force_flush=True)
-            self.flush_step_generation()
 
             logging.info("Move to destination")
 
