@@ -128,22 +128,7 @@ class PolarKinematics:
         if abs(angle_diff) > 1e-6:  # Only move if there's a significant difference
             force_move = self.printer.lookup_object('force_move')
             force_move.manual_move(stepper_bed, angle_diff, 6.0, 3.0)  # 1 rad/s, 1 rad/s^2
-            
-            # After force_move, completely reset the stepper state
-            toolhead = self.printer.lookup_object('toolhead')
-            
-            # Force a complete flush of all step generation
-            toolhead.flush_step_generation()
-            
-            # Reset the stepper's trapq to the main one
-            stepper_bed.set_trapq(toolhead.get_trapq())
-            
-            # Wait for all moves to complete to ensure clean state
-            toolhead.wait_moves()
 
-            # Force another complete flush to ensure clean state
-            toolhead.flush_step_generation()
-            
             # Manually update the stepper's commanded position to the target angle
             # This is needed because when set_position is called with (0,0), 
             # the polar angle calc function returns the current angle to avoid atan2(0,0)
@@ -156,10 +141,6 @@ class PolarKinematics:
             target_x = math.cos(angle) * 1.0  # Use radius of 1.0 
             target_y = math.sin(angle) * 1.0
             ffi_lib.itersolve_set_position(sk, target_x, target_y, 0.0)
-            
-            # Debug: Check the actual stepper position after manual update
-            actual_angle = stepper_bed.get_commanded_position()
-            logging.info(f"After manual commanded_pos update: target_angle={angle}, actual_angle={actual_angle}, diff={angle-actual_angle}")
 
 
     def get_status(self, eventtime):

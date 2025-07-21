@@ -480,7 +480,6 @@ class ToolHead:
             return
 
         if self.is_polar_kinematics:
-            logging.info(f"Move crosses origin")
 
             # 1. Move to origin and FULLY STOP
             move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
@@ -489,21 +488,14 @@ class ToolHead:
 
             # Calculate target angle and rotate bed directly
             target_angle = math.atan2(newpos[1], newpos[0])
-            
-            # Rotate bed bypassing motion system
             self.kin.rotate_bed(target_angle)
             
             # Update the entire kinematics system to reflect the new stepper positions
             self.set_position([0., 0., newpos[2], newpos[3]], "")
 
-            actual_angle = self.kin.get_steppers()[0].get_commanded_position()
-            logging.info(f"After Set Position: target_angle={target_angle}, actual_angle={actual_angle}, diff={target_angle-actual_angle}")
-
             # 3. Move to final destination
             move_to_destination = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
             self._process_move(move_to_destination, force_flush=True)
-
-            logging.info("Move to destination")
 
 
     def _process_move(self, move, force_flush=False):
