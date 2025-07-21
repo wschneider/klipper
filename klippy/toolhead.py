@@ -4,8 +4,6 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import math, logging, importlib
-from importlib.metadata import pass_none
-
 import mcu, chelper, kinematics.extruder
 
 # Common suffixes: _d is distance (in mm), _v is velocity (in
@@ -14,7 +12,7 @@ import mcu, chelper, kinematics.extruder
 
 # Class to track each move request
 class Move:
-    def __init__(self, toolhead, start_pos, end_pos, speed, special_polar_theta_adjust=False):
+    def __init__(self, toolhead, start_pos, end_pos, speed):
         self.toolhead = toolhead
         self.start_pos = tuple(start_pos)
         self.end_pos = tuple(end_pos)
@@ -50,15 +48,7 @@ class Move:
         self.max_smoothed_v2 = 0.
         self.smooth_delta_v2 = 2.0 * move_d * toolhead.max_accel_to_decel
         self.next_junction_v2 = 999999999.9
-        self.special_polar_theta_adjust = special_polar_theta_adjust
-        if self.special_polar_theta_adjust:
-            # Keep it kinematic but make it a zero-distance move that only rotates the bed
-            # This allows it to go through normal trapq processing
-            self.is_kinematic_move = True
-            self.min_move_t = 0.1 # time for rotation
-            min_velocity = 0.1  # 0.1 mm/s
-            self.max_cruise_v2 = min_velocity**2
-            self.start_v = self.end_v = self.cruise_v = min_velocity
+
     def limit_speed(self, speed, accel):
         speed2 = speed**2
         if speed2 < self.max_cruise_v2:
@@ -278,16 +268,17 @@ class ToolHead:
         self.Coord = gcode.Coord
         extruder = kinematics.extruder.DummyExtruder(self.printer)
         self.extra_axes = [extruder]
-        self.kin_name = config.get('kinematics')
+        kin_name = config.get('kinematics')
+        self.is_polar_kinematics = (kin_name == 'polar')
         try:
-            mod = importlib.import_module('kinematics.' + self.kin_name)
+            mod = importlib.import_module('kinematics.' + kin_name)
             self.kin = mod.load_kinematics(self, config)
         except config.error as e:
             raise
         except self.printer.lookup_object('pins').error as e:
             raise
         except:
-            msg = "Error loading kinematics '%s'" % (self.kin_name,)
+            msg = "Error loading kinematics '%s'" % (kin_name,)
             logging.exception(msg)
             raise config.error(msg)
         # Register commands
@@ -483,25 +474,14 @@ class ToolHead:
             last_move.limit_next_junction_speed(speed)
     def move(self, newpos, speed):
 
-        if self.kin_name == 'polar':
-            '''
-            Polar moves require special logic when they pass around the origin. 
-            If a move crosses the origin, it should be split into three moves:
-            1. A move to the origin, with appropriate trapezoid, and velocity zero when it arrives.
-            2. A special rotation move around the origin to realign the toolhead to the new angle
-            3. A move to the destination position. 
-            '''
-            logging.info(f"Polar Kinematic Move received {self.commanded_pos} to {newpos}")
+        if not self.is_polar_kinematics or not do_positions_cross_origin(self.commanded_pos, newpos):
+            move = Move(self, self.commanded_pos, newpos, speed)
+            self._process_move(move)
+            return
 
-            if not do_positions_cross_origin(self.commanded_pos, newpos):
-                move = Move(self, self.commanded_pos, newpos, speed)
-                self._process_move(move)
-                return
-
+        if self.is_polar_kinematics:
             logging.info(f"Move crosses origin")
 
-            # Your original approach: Move to origin, STOP, rotate, STOP, then move to target
-            
             # 1. Move to origin and FULLY STOP
             move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
             move_to_origin.limit_next_junction_speed(0.0)
@@ -543,9 +523,6 @@ class ToolHead:
 
             logging.info("Move to destination")
 
-        else:
-            move = Move(self, self.commanded_pos, newpos, speed)
-            self._process_move(move)
 
     def _process_move(self, move, force_flush=False):
         if not move.move_d:
