@@ -41,6 +41,11 @@ class PolarKinematics:
         min_z, max_z = self.rails[1].get_range()
         self.axes_min = toolhead.Coord(-max_xy, -max_xy, min_z, 0.)
         self.axes_max = toolhead.Coord(max_xy, max_xy, max_z, 0.)
+
+        # Max radial velocity is linear velocity at the edge of the bed
+        self.max_r_velocity = toolhead.max_velocity / max_xy
+        self.max_r_accel = toolhead.max_accel / max_xy
+
     def get_steppers(self):
         return list(self.steppers)
     def calc_position(self, stepper_positions):
@@ -127,7 +132,7 @@ class PolarKinematics:
         # Use force_move to actually move the stepper
         if abs(angle_diff) > 1e-6:  # Only move if there's a significant difference
             force_move = self.printer.lookup_object('force_move')
-            force_move.manual_move(stepper_bed, angle_diff, 6.0, 3.0)  # 1 rad/s, 1 rad/s^2
+            force_move.manual_move(stepper_bed, angle_diff, self.max_r_velocity, self.max_r_accel)  # 1 rad/s, 1 rad/s^2
 
             # Manually update the stepper's commanded position to the target angle
             # This is needed because when set_position is called with (0,0), 
