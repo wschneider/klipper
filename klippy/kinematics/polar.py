@@ -115,6 +115,44 @@ class PolarKinematics:
             move.limit_speed(self.max_z_velocity * z_ratio,
                              self.max_z_accel * z_ratio)
 
+        # Apply angular velocity limit for moves near the origin
+        # Calculate the minimum radius during the move to determine the most restrictive constraint
+        start_r = math.sqrt(move.start_pos[0]**2 + move.start_pos[1]**2)
+        end_r = math.sqrt(end_pos[0]**2 + end_pos[1]**2)
+        min_r = min(start_r, end_r)
+        
+        # Only apply angular velocity limit if there's significant XY movement
+        xy_move_d = math.sqrt(move.axes_d[0]**2 + move.axes_d[1]**2)
+        if xy_move_d > 1e-6:
+            # If this move starts or ends at the origin, there is no angle change
+            # Moves that cross the origin would have been split earlier in the
+            # code path:
+            if start_r < 1e-6 or end_r < 1e-6:
+                # If the move starts or ends at the origin, we cannot apply angular velocity limit
+                return
+
+            # Calculate the angular change for this move
+            angle_start = math.atan2(move.start_pos[1], move.start_pos[0])
+            angle_end = math.atan2(end_pos[1], end_pos[0])
+            angle_diff = angle_end - angle_start
+            
+            # Normalize angle difference to [-pi, pi]
+            while angle_diff > math.pi:
+                angle_diff -= 2 * math.pi
+            while angle_diff < -math.pi:
+                angle_diff += 2 * math.pi
+            
+            # If there's significant angular change, apply velocity limit
+            if abs(angle_diff) > 1e-6 and min_r > 1e-6:
+                # Maximum linear velocity based on angular velocity limit
+                # v_linear = r * omega_max, so v_max = min_r * max_r_velocity
+                max_linear_velocity = min_r * self.max_r_velocity
+                max_linear_accel = min_r * self.max_r_accel
+                
+                # Apply the limit if it's more restrictive than current limits
+                move.limit_speed(max_linear_velocity, max_linear_accel)
+
+
     def rotate_bed(self, angle):
         # Use force_move to actually command the bed stepper to the new angle
         stepper_bed = self.steppers[0]
