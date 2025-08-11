@@ -119,7 +119,8 @@ class PolarKinematics:
         # Calculate the minimum radius during the move to determine the most restrictive constraint
         start_r = math.sqrt(move.start_pos[0]**2 + move.start_pos[1]**2)
         end_r = math.sqrt(end_pos[0]**2 + end_pos[1]**2)
-        min_r = min(start_r, end_r)
+        # min_r = min(start_r, end_r)
+        min_r = min_radius_point(move.start_pos[0], move.start_pos[1], end_pos[0], end_pos[1])
         
         # Only apply angular velocity limit if there's significant XY movement
         xy_move_d = math.sqrt(move.axes_d[0]**2 + move.axes_d[1]**2)
@@ -203,3 +204,31 @@ class PolarKinematics:
 
 def load_kinematics(toolhead, config):
     return PolarKinematics(toolhead, config)
+
+def min_radius_point(x_start, y_start, x_end, y_end):
+    # Vector from A to B
+    dx = x_end - x_start
+    dy = y_end - y_start
+
+    # Squared length of AB
+    len_sq = dx*dx + dy*dy
+    if len_sq == 0:
+        # Degenerate case: A and B are the same point
+        r = math.hypot(x_start, y_start)
+        return r
+
+    # Projection parameter t* for closest point to origin
+    t_star = -(x_start*dx + y_start*dy) / len_sq
+
+    # Clamp to segment
+    t_seg = max(0, min(1, t_star))
+
+    # Closest point
+    px = x_start + t_seg * dx
+    py = y_start + t_seg * dy
+
+    # Polar coordinates
+    r_min = math.hypot(px, py)
+    # theta = math.atan2(py, px)
+
+    return r_min
