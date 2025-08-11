@@ -154,7 +154,7 @@ class PolarKinematics:
                              move.start_pos[0], move.start_pos[1],
                              end_pos[0], end_pos[1], angle_diff)
                 logging.info("Adjusting velocity and acceleration from: %f, %f to: %f, %f",
-                             move.max_velocity, move.max_accel,
+                             move.cruise_v, move.accel,
                              max_linear_velocity, max_linear_accel)
 
                 move.limit_speed(max_linear_velocity, max_linear_accel)
