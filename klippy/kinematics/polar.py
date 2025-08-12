@@ -147,8 +147,8 @@ class PolarKinematics:
             if abs(angle_diff) > 1e-6 and min_r > 1e-6:
                 # Maximum linear velocity based on angular velocity limit
                 # v_linear = r * omega_max, so v_max = min_r * max_r_velocity
-                max_linear_velocity = min_r * self.max_r_velocity
-                max_linear_accel = min_r * self.max_r_accel
+                max_linear_velocity = max(min_r * self.max_r_velocity, 10)
+                max_linear_accel = max(min_r * self.max_r_accel, 40)
                 
                 # Apply the limit if it's more restrictive than current limits
                 logging.info("Moving from (%f, %f) to (%f, %f) with angle change %f radians",
