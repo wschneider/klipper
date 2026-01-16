@@ -48,6 +48,7 @@ class Move:
         self.max_smoothed_v2 = 0.
         self.smooth_delta_v2 = 2.0 * move_d * toolhead.max_accel_to_decel
         self.next_junction_v2 = 999999999.9
+
     def limit_speed(self, speed, accel):
         speed2 = speed**2
         if speed2 < self.max_cruise_v2:
@@ -268,6 +269,7 @@ class ToolHead:
         extruder = kinematics.extruder.DummyExtruder(self.printer)
         self.extra_axes = [extruder]
         kin_name = config.get('kinematics')
+        self.is_polar_kinematics = (kin_name == 'polar')
         try:
             mod = importlib.import_module('kinematics.' + kin_name)
             self.kin = mod.load_kinematics(self, config)
@@ -471,7 +473,32 @@ class ToolHead:
         if last_move is not None:
             last_move.limit_next_junction_speed(speed)
     def move(self, newpos, speed):
-        move = Move(self, self.commanded_pos, newpos, speed)
+
+        if not self.is_polar_kinematics or not do_positions_cross_origin(self.commanded_pos, newpos):
+            move = Move(self, self.commanded_pos, newpos, speed)
+            self._process_move(move)
+            return
+
+        if self.is_polar_kinematics:
+
+            # 1. Move to origin and FULLY STOP
+            move_to_origin = Move(self, self.commanded_pos, (0., 0., newpos[2], newpos[3]), speed)
+            move_to_origin.limit_next_junction_speed(0.0)
+            self._process_move(move_to_origin, force_flush=True)
+
+            # Calculate target angle and rotate bed directly
+            target_angle = math.atan2(newpos[1], newpos[0])
+            self.kin.rotate_bed(target_angle)
+            
+            # Update the entire kinematics system to reflect the new stepper positions
+            self.set_position([0., 0., newpos[2], newpos[3]], "")
+
+            # 3. Move to final destination
+            move_to_destination = Move(self, (0., 0., newpos[2], newpos[3]), newpos, speed)
+            self._process_move(move_to_destination, force_flush=True)
+
+
+    def _process_move(self, move, force_flush=False):
         if not move.move_d:
             return
         if move.is_kinematic_move:
@@ -481,10 +508,11 @@ class ToolHead:
                 ea.check_move(move, e_index + 3)
         self.commanded_pos[:] = move.end_pos
         want_flush = self.lookahead.add_move(move)
-        if want_flush:
+        if want_flush or force_flush:
             self._process_lookahead(lazy=True)
         if self.print_time > self.need_check_pause:
             self._check_pause()
+
     def manual_move(self, coord, speed):
         curpos = list(self.commanded_pos)
         for i in range(len(coord)):
@@ -731,3 +759,36 @@ class ToolHead:
 def add_printer_objects(config):
     config.get_printer().add_object('toolhead', ToolHead(config))
     kinematics.extruder.add_printer_objects(config)
+
+def do_positions_cross_origin(start_pos, end_pos):
+    EPSILON = 0.1  # 0.1mm tolerance around origin
+
+    # If the start position is near the origin, then yes:
+    if (abs(start_pos[0]) <= EPSILON and abs(start_pos[1]) <= EPSILON):
+        return True
+
+    # If both start and end positions are positive or both negative, then no:
+    if (start_pos[0] * end_pos[0] > 0.0 or start_pos[1] * end_pos[1] > 0.0):
+        return False
+
+    # We know the start and end positions are on opposite sides of the origin; it may not pass
+    #   through it though. Y = MX + B; we can use the slope of the line between the two points
+    #   to determine if the line crosses the origin.
+    delta_y = end_pos[1] - start_pos[1]
+    delta_x = end_pos[0] - start_pos[0]
+
+    if abs(delta_x) <= EPSILON and abs(start_pos[0]) <= EPSILON:
+        # Vertical line through origin
+        return True
+    elif abs(delta_x) <= EPSILON:
+        # Vertical line not through origin
+        return False
+
+    slope = delta_y / delta_x
+    y_intercept = start_pos[1] - slope * start_pos[0]
+    # Check if the line crosses within epsilon of the origin
+    if abs(y_intercept) <= EPSILON:
+        # Line crosses origin (within tolerance)
+        return True
+
+    return False

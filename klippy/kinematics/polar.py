@@ -6,8 +6,15 @@
 import logging, math
 import stepper
 
+
+# Fixing polar kinematics:
+# 1. All moves that cross the origin x=0, y=0 should be split into two moves
+# 2. Moves with a start position at the origin should then have a rotation step
+#       before move
+
 class PolarKinematics:
     def __init__(self, toolhead, config):
+        self.printer = config.get_printer()
         # Setup axis steppers
         stepper_bed = stepper.PrinterStepper(config.getsection('stepper_bed'),
                                              units_in_radians=True)
@@ -34,6 +41,11 @@ class PolarKinematics:
         min_z, max_z = self.rails[1].get_range()
         self.axes_min = toolhead.Coord(-max_xy, -max_xy, min_z, 0.)
         self.axes_max = toolhead.Coord(max_xy, max_xy, max_z, 0.)
+
+        # Max radial velocity is linear velocity at the edge of the bed
+        self.max_r_velocity = toolhead.max_velocity / max_xy
+        self.max_r_accel = toolhead.max_accel / max_xy
+
     def get_steppers(self):
         return list(self.steppers)
     def calc_position(self, stepper_positions):
@@ -102,6 +114,85 @@ class PolarKinematics:
             z_ratio = move.move_d / abs(move.axes_d[2])
             move.limit_speed(self.max_z_velocity * z_ratio,
                              self.max_z_accel * z_ratio)
+
+        # Apply angular velocity limit for moves near the origin
+        # Calculate the minimum radius during the move to determine the most restrictive constraint
+        start_r = math.sqrt(move.start_pos[0]**2 + move.start_pos[1]**2)
+        end_r = math.sqrt(end_pos[0]**2 + end_pos[1]**2)
+        # min_r = min(start_r, end_r)
+        min_r = min_radius_point(move.start_pos[0], move.start_pos[1], end_pos[0], end_pos[1])
+        
+        # Only apply angular velocity limit if there's significant XY movement
+        xy_move_d = math.sqrt(move.axes_d[0]**2 + move.axes_d[1]**2)
+        if xy_move_d > 1e-6:
+            # If this move starts or ends at the origin, there is no angle change
+            # Moves that cross the origin would have been split earlier in the
+            # code path:
+            if start_r < 1e-6 or end_r < 1e-6:
+                # If the move starts or ends at the origin, we cannot apply angular velocity limit
+                return
+
+            # Calculate the angular change for this move
+            angle_start = math.atan2(move.start_pos[1], move.start_pos[0])
+            angle_end = math.atan2(end_pos[1], end_pos[0])
+            angle_diff = angle_end - angle_start
+            
+            # Normalize angle difference to [-pi, pi]
+            while angle_diff > math.pi:
+                angle_diff -= 2 * math.pi
+            while angle_diff < -math.pi:
+                angle_diff += 2 * math.pi
+            
+            # If there's significant angular change, apply velocity limit
+            if abs(angle_diff) > 1e-6 and min_r > 1e-6:
+                # Maximum linear velocity based on angular velocity limit
+                # v_linear = r * omega_max, so v_max = min_r * max_r_velocity
+                max_linear_velocity = max(min_r * self.max_r_velocity, 10)
+                max_linear_accel = max(min_r * self.max_r_accel, 40)
+                
+                # Apply the limit if it's more restrictive than current limits
+                logging.info("Moving from (%f, %f) to (%f, %f) with angle change %f radians",
+                             move.start_pos[0], move.start_pos[1],
+                             end_pos[0], end_pos[1], angle_diff)
+                logging.info("Adjusting velocity and acceleration to: %f, %f",
+                             max_linear_velocity, max_linear_accel)
+
+                move.limit_speed(max_linear_velocity, max_linear_accel)
+
+
+    def rotate_bed(self, angle):
+        # Use force_move to actually command the bed stepper to the new angle
+        stepper_bed = self.steppers[0]
+        
+        # Calculate the angle difference (shortest path)
+        current_angle = stepper_bed.get_commanded_position()
+        angle_diff = angle - current_angle
+        
+        # Normalize to shortest rotation
+        if angle_diff > 3.14159:
+            angle_diff -= 2 * 3.14159
+        elif angle_diff < -3.14159:
+            angle_diff += 2 * 3.14159
+        
+        # Use force_move to actually move the stepper
+        if abs(angle_diff) > 1e-6:  # Only move if there's a significant difference
+            force_move = self.printer.lookup_object('force_move')
+            force_move.manual_move(stepper_bed, angle_diff, self.max_r_velocity, self.max_r_accel)  # 1 rad/s, 1 rad/s^2
+
+            # Manually update the stepper's commanded position to the target angle
+            # This is needed because when set_position is called with (0,0), 
+            # the polar angle calc function returns the current angle to avoid atan2(0,0)
+            # creating a circular dependency where the angle never gets updated
+            import chelper
+            ffi_main, ffi_lib = chelper.get_ffi()
+            sk = stepper_bed.get_stepper_kinematics()
+            # Use a temporary move structure to set the commanded position
+            # We'll create a fake coordinate that would result in the target angle
+            target_x = math.cos(angle) * 1.0  # Use radius of 1.0 
+            target_y = math.sin(angle) * 1.0
+            ffi_lib.itersolve_set_position(sk, target_x, target_y, 0.0)
+
+
     def get_status(self, eventtime):
         xy_home = "xy" if self.limit_xy2 >= 0. else ""
         z_home = "z" if self.limit_z[0] <= self.limit_z[1] else ""
@@ -113,3 +204,31 @@ class PolarKinematics:
 
 def load_kinematics(toolhead, config):
     return PolarKinematics(toolhead, config)
+
+def min_radius_point(x_start, y_start, x_end, y_end):
+    # Vector from A to B
+    dx = x_end - x_start
+    dy = y_end - y_start
+
+    # Squared length of AB
+    len_sq = dx*dx + dy*dy
+    if len_sq == 0:
+        # Degenerate case: A and B are the same point
+        r = math.hypot(x_start, y_start)
+        return r
+
+    # Projection parameter t* for closest point to origin
+    t_star = -(x_start*dx + y_start*dy) / len_sq
+
+    # Clamp to segment
+    t_seg = max(0, min(1, t_star))
+
+    # Closest point
+    px = x_start + t_seg * dx
+    py = y_start + t_seg * dy
+
+    # Polar coordinates
+    r_min = math.hypot(px, py)
+    # theta = math.atan2(py, px)
+
+    return r_min
